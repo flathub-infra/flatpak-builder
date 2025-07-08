@@ -2448,6 +2448,107 @@ appstreamcli_compose (GError **error,
   return TRUE;
 }
 
+static gboolean
+ship_svg_icon_in_media(const gchar *appid, const gchar *app_root, const gchar *media_dir) {
+  gboolean success = FALSE;
+  gchar *png_fname = g_strconcat(appid, ".png", NULL);
+  gchar *svg_dir = g_build_filename(app_root, "share", "icons", "hicolor", "scalable", "apps", NULL);
+  gchar *svg_filename = g_strconcat(appid, ".svg", NULL);
+  gchar *svg_full_path = g_build_filename(svg_dir, svg_filename, NULL);
+  gchar *icon_path = NULL;
+  gchar *parent_dir = NULL;
+  gchar *icons_dir = NULL;
+  gchar *app_dir = NULL;
+  gchar *scalable_dir = NULL;
+  gchar *dest_svg_path = NULL;
+
+  GQueue *dirs = g_queue_new();
+  g_queue_push_tail(dirs, g_strdup(media_dir));
+
+  while (!g_queue_is_empty(dirs)) {
+    gchar *current_dir = g_queue_pop_head(dirs);
+    GDir *dir = g_dir_open(current_dir, 0, NULL);
+
+    if (dir) {
+      const gchar *filename;
+      while ((filename = g_dir_read_name(dir)) != NULL) {
+        gchar *full_path = g_build_filename(current_dir, filename, NULL);
+        if (g_file_test(full_path, G_FILE_TEST_IS_DIR)) {
+          g_queue_push_tail(dirs, full_path);
+        } else if (g_str_has_suffix(full_path, png_fname)) {
+            if (g_strrstr(full_path, "icons/128x128/")) {
+              icon_path = g_strdup(full_path);
+              g_free(full_path);
+              g_dir_close(dir);
+              g_free(current_dir);
+              goto found;
+            }
+            g_free(full_path);
+          } else {
+            g_free(full_path);
+          }
+        }
+        g_dir_close(dir);
+      }
+      g_free(current_dir);
+  }
+   
+found:
+  g_queue_free_full(dirs, g_free);
+
+  if (!icon_path || !g_file_test(svg_full_path, G_FILE_TEST_EXISTS)) {
+    goto cleanup;
+  }
+
+  parent_dir = g_path_get_dirname(icon_path);
+  icons_dir = g_path_get_dirname(parent_dir);
+  app_dir = g_path_get_dirname(icons_dir);
+  scalable_dir = g_build_filename(app_dir, "icons", "scalable", NULL);
+
+  if (!g_file_test(scalable_dir, G_FILE_TEST_IS_DIR)) {
+    if (g_mkdir_with_parents(scalable_dir, 0755) != 0) {
+      goto cleanup;
+    }
+  }
+
+  dest_svg_path = g_build_filename(scalable_dir, svg_filename, NULL);
+
+  GFile *src = g_file_new_for_path(svg_full_path);
+  GFile *dst = g_file_new_for_path(dest_svg_path);
+  GError *error = NULL;
+
+  if (g_file_test(dest_svg_path, G_FILE_TEST_EXISTS)) {
+    if (!g_file_delete(dst, NULL, &error)) {
+      g_clear_error(&error);
+      g_object_unref(src);
+      g_object_unref(dst);
+      goto cleanup;
+    }
+  }
+
+  if (g_file_copy(src, dst, G_FILE_COPY_NONE, NULL, NULL, NULL, &error)) {
+    success = TRUE;
+  } else {
+    g_clear_error(&error);
+  }
+
+  g_object_unref(src);
+  g_object_unref(dst);
+   
+cleanup:
+  g_free(png_fname);
+  g_free(svg_dir);
+  g_free(svg_filename);
+  g_free(svg_full_path);
+  g_free(icon_path);
+  g_free(parent_dir);
+  g_free(icons_dir);
+  g_free(app_dir);
+  g_free(scalable_dir);
+  g_free(dest_svg_path);
+  return success;
+}
+
 static char **
 strcatv (char **strv1,
          char **strv2)
@@ -3088,6 +3189,7 @@ builder_manifest_cleanup (BuilderManifest *self,
                                          app_root_path,
                                          NULL))
               return FALSE;
+            ship_svg_icon_in_media(builder_manifest_get_id (self), app_root_path, flatpak_file_get_path_cached (media_dir));
             }
           else
             {
