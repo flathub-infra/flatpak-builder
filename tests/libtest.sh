@@ -95,6 +95,23 @@ export U="--user"
 export FLATPAK="${CMD_PREFIX} flatpak"
 export FLATPAK_BUILDER="${CMD_PREFIX} flatpak-builder"
 
+test_number=0
+
+ok () {
+    { { local BASH_XTRACEFD=3; } 2> /dev/null
+        test_number=$(( test_number + 1 ))
+        echo "ok $test_number - $*";
+        echo "================ $(basename ${BASH_SOURCE[1]}):${BASH_LINENO[0]} - $@ ================" >&2;
+    } 3> /dev/null
+}
+
+done_testing () {
+    { { local BASH_XTRACEFD=3; } 2> /dev/null
+    echo "1..$test_number"
+    echo "# Done testing"
+    } 3> /dev/null
+}
+
 assert_streq () {
     test "$1" = "$2" || (echo 1>&2 "$1 != $2"; exit 1)
 }
@@ -113,6 +130,12 @@ assert_has_symlink () {
 
 assert_has_dir () {
     test -d "$1" || (echo 1>&2 "Couldn't find '$1'"; exit 1)
+}
+
+assert_not_has_symlink () {
+    if test -L "$1"; then
+        echo 1>&2 "Symlink '$1' exists"; exit 1
+    fi
 }
 
 assert_not_has_file () {
@@ -149,6 +172,14 @@ assert_file_has_content () {
     if ! grep -q -e "$2" "$1"; then
         sed -e 's/^/# /' < "$1" >&2
         echo 1>&2 "File '$1' doesn't match regexp '$2'"
+        exit 1
+    fi
+}
+
+assert_file_has_content_extended () {
+    if ! grep -q -E -e "$2" "$1"; then
+        sed -e 's/^/# /' < "$1" >&2
+        echo 1>&2 "File '$1' doesn't match extended regexp '$2'"
         exit 1
     fi
 }
@@ -291,6 +322,37 @@ run () {
 
 run_sh () {
     ${CMD_PREFIX} flatpak run --command=bash ${ARGS-} org.test.Hello -c "$*"
+}
+
+: "${FORCE_CLEAN:=1}"
+
+builder_run_app () {
+    local appdir="${APPDIR:-appdir}"
+
+    ${FLATPAK_BUILDER} --run "$appdir" "$@"
+}
+
+_run_build () {
+    local appdir="${APPDIR:-appdir}"
+
+    if [ -n "${BUILD_LOG:-}" ]; then
+        ${FLATPAK_BUILDER} ${FORCE_CLEAN:+--force-clean} \
+            "$appdir" "$@" >&2 2>"$BUILD_LOG"
+    else
+        ${FLATPAK_BUILDER} ${FORCE_CLEAN:+--force-clean} \
+            "$appdir" "$@" >&2
+    fi
+}
+
+run_build () {
+    _run_build "$@"
+}
+
+run_build_fail () {
+    if _run_build "$@"; then
+        echo "build of ${!#} unexpectedly succeeded" >&2
+        exit 1
+    fi
 }
 
 # fuse support is needed (and the kernel module needs to be loaded) for several

@@ -13,6 +13,9 @@ test_names = [
   'test-builder-python',
   'test-builder-cleanup',
   'test-builder-licence-paths',
+  'test-builder-locale-migration',
+  'test-sandboxed-mode-source-resolution',
+  'test-appstream',
 ]
 
 tap_test = find_program(
@@ -30,6 +33,7 @@ foreach test_name : test_names
     depends: flatpak_builder,
     protocol: 'tap',
     workdir: meson.current_build_dir(),
+    timeout: 60
   )
 
   if get_option('installed_tests')

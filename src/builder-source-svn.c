@@ -208,14 +208,14 @@ builder_source_svn_download (BuilderSource  *source,
   BuilderSourceSvn *self = BUILDER_SOURCE_SVN (source);
   g_autoptr(GFile) parent = NULL;
   g_autofree char *filename = NULL;
+  g_autofree char *repo_location = NULL;
 
   g_autoptr(GFile) mirror_dir = NULL;
 
-  if (self->url == NULL)
-    {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "URL not specified");
-      return FALSE;
-    }
+  repo_location = builder_context_resolve_repo_location (context, self->url, error);
+
+  if (repo_location == NULL)
+    return FALSE;
 
   mirror_dir = get_mirror_dir (self, context, self->revision);
   parent = g_file_get_parent (mirror_dir);
@@ -259,7 +259,7 @@ builder_source_svn_download (BuilderSource  *source,
           if (!svn (parent, NULL, error,
                     "checkout", "--non-interactive",
                     "-r", self->revision ? self->revision : "HEAD",
-                    self->url,  filename_tmp, NULL))
+                    repo_location,  filename_tmp, NULL))
             return FALSE;
         }
 
@@ -390,6 +390,18 @@ builder_source_svn_update (BuilderSource  *source,
   return TRUE;
 }
 
+static gboolean
+builder_source_svn_validate (BuilderSource  *source,
+                             GError        **error)
+{
+  BuilderSourceSvn *self = BUILDER_SOURCE_SVN (source);
+
+  if (self->url == NULL)
+    return flatpak_fail (error, "URL not specified for svn source");
+
+  return TRUE;
+}
+
 static void
 builder_source_svn_class_init (BuilderSourceSvnClass *klass)
 {
@@ -405,6 +417,7 @@ builder_source_svn_class_init (BuilderSourceSvnClass *klass)
   source_class->bundle = builder_source_svn_bundle;
   source_class->update = builder_source_svn_update;
   source_class->checksum = builder_source_svn_checksum;
+  source_class->validate = builder_source_svn_validate;
 
   g_object_class_install_property (object_class,
                                    PROP_URL,

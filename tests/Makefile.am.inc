@@ -89,6 +89,9 @@ dist_test_scripts = \
 	tests/test-builder-python.sh \
 	tests/test-builder-cleanup.sh \
 	tests/test-builder-licence-paths.sh \
+	tests/test-builder-locale-migration.sh \
+	tests/test-sandboxed-mode-source-resolution.sh \
+	tests/test-appstream.sh \
 	$(NULL)
 
 @VALGRIND_CHECK_RULES@

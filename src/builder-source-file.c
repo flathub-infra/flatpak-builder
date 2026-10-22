@@ -231,7 +231,7 @@ builder_source_file_validate (BuilderSource  *source,
       strchr (self->dest_filename, '/') != NULL)
     return flatpak_fail (error, "No slashes allowed in dest-filename, use dest property for directory");
 
-  return TRUE;
+  return builder_validate_source_checksums (self->md5, self->sha1, self->sha256, self->sha512, error);
 }
 
 
@@ -321,6 +321,18 @@ get_source_file (BuilderSourceFile *self,
 
   if (self->url != NULL && self->url[0] != 0)
     {
+      g_autoptr(GFile) local_file = NULL;
+
+      if (!builder_context_resolve_source_uri (context, self->url, &local_file, error))
+        return NULL;
+
+      if (local_file != NULL)
+        {
+          *is_local = TRUE;
+          *is_inline = FALSE;
+          return g_steal_pointer (&local_file);
+        }
+
       *is_local = FALSE;
       return get_download_location (self, is_inline, context, error);
     }

@@ -168,12 +168,32 @@ get_source_files (BuilderSourcePatch *self,
   int i;
 
   if ((self->path != NULL && self->path[0] != 0))
-    g_ptr_array_add (res, g_file_resolve_relative_path (base_dir, self->path));
+    {
+      g_autoptr(GFile) file = g_file_resolve_relative_path (base_dir, self->path);
+
+      if (!builder_context_ensure_file_sandboxed (context, file, error))
+        {
+          g_prefix_error (error, "Unable to get source file '%s': ", self->path);
+          return NULL;
+        }
+
+      g_ptr_array_add (res, g_steal_pointer (&file));
+    }
 
   if (self->paths != NULL)
     {
       for (i = 0; self->paths[i] != NULL; i++)
-        g_ptr_array_add (res, g_file_resolve_relative_path (base_dir, self->paths[i]));
+        {
+          g_autoptr(GFile) file = g_file_resolve_relative_path (base_dir, self->paths[i]);
+
+          if (!builder_context_ensure_file_sandboxed (context, file, error))
+            {
+              g_prefix_error (error, "Unable to get source file '%s': ", self->paths[i]);
+              return NULL;
+            }
+
+          g_ptr_array_add (res, g_steal_pointer (&file));
+        }
     }
 
   if (res->len == 0)
@@ -250,10 +270,14 @@ patch (GFile      *dir,
   args = g_ptr_array_new ();
   if (use_git) {
     g_ptr_array_add (args, "git");
+    g_ptr_array_add (args, "-c");
+    g_ptr_array_add (args, "core.hooksPath=/dev/null");
     g_ptr_array_add (args, "apply");
     g_ptr_array_add (args, "-v");
   } else if (use_git_am) {
     g_ptr_array_add (args, "git");
+    g_ptr_array_add (args, "-c");
+    g_ptr_array_add (args, "core.hooksPath=/dev/null");
     g_ptr_array_add (args, "am");
     g_ptr_array_add (args, "--keep-cr");
     g_ptr_array_add (args, "--no-gpg-sign");

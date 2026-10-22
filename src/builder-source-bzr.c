@@ -174,12 +174,12 @@ builder_source_bzr_download (BuilderSource  *source,
   BuilderSourceBzr *self = BUILDER_SOURCE_BZR (source);
 
   g_autoptr(GFile) mirror_dir = NULL;
+  g_autofree char *repo_location = NULL;
 
-  if (self->url == NULL)
-    {
-      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "URL not specified");
-      return FALSE;
-    }
+  repo_location = builder_context_resolve_repo_location (context, self->url, error);
+
+  if (repo_location == NULL)
+    return FALSE;
 
   mirror_dir = get_mirror_dir (self, context);
 
@@ -205,7 +205,7 @@ builder_source_bzr_download (BuilderSource  *source,
       mirror_dir_tmp = g_file_new_for_path (path_tmp);
       filename_tmp = g_file_get_basename (mirror_dir_tmp);
 
-      branch_source = self->url;
+      branch_source = repo_location;
 
       cached_bzr_dir = builder_context_find_in_sources_dirs (context, "bzr", filename, NULL);
       if (cached_bzr_dir != NULL)
@@ -365,6 +365,18 @@ builder_source_bzr_update (BuilderSource  *source,
   return TRUE;
 }
 
+static gboolean
+builder_source_bzr_validate (BuilderSource  *source,
+                             GError        **error)
+{
+  BuilderSourceBzr *self = BUILDER_SOURCE_BZR (source);
+
+  if (self->url == NULL)
+    return flatpak_fail (error, "URL not specified for bzr source");
+
+  return TRUE;
+}
+
 static void
 builder_source_bzr_class_init (BuilderSourceBzrClass *klass)
 {
@@ -380,6 +392,7 @@ builder_source_bzr_class_init (BuilderSourceBzrClass *klass)
   source_class->bundle = builder_source_bzr_bundle;
   source_class->update = builder_source_bzr_update;
   source_class->checksum = builder_source_bzr_checksum;
+  source_class->validate = builder_source_bzr_validate;
 
   g_object_class_install_property (object_class,
                                    PROP_URL,

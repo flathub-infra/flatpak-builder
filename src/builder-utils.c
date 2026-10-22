@@ -445,20 +445,46 @@ migrate_locale_dir (int         root_dfd,
 
   while (TRUE)
     {
+      g_autofree char *language = NULL;
+      struct stat st;
+
       if (!glnx_dirfd_iterator_next_dent (&iter, &dent, NULL, error))
         return FALSE;
 
       if (dent == NULL)
         break;
 
-      {
-        g_autofree char *language = locale_name_to_language (dent->d_name);
+      if (!glnx_fstatat (source_dfd, dent->d_name, &st, AT_SYMLINK_NOFOLLOW, error))
+        return FALSE;
 
-        /* We ship english and C locales always */
-        if (strcmp (language, "C") == 0 ||
-            strcmp (language, "en") == 0)
-          continue;
-      }
+      language = locale_name_to_language (dent->d_name);
+
+      if (S_ISLNK (st.st_mode))
+        {
+          const char *expected_target_prefix;
+          g_autofree char *expected_target = NULL;
+          g_autofree char *actual_target = NULL;
+
+          if (g_strcmp0 (source_rel, "share/locale") == 0)
+            expected_target_prefix = "../runtime/locale";
+          else
+            expected_target_prefix = "../../share/runtime/locale";
+
+          expected_target = g_build_filename (expected_target_prefix,
+                                              language, subdir, dent->d_name, NULL);
+          actual_target = glnx_readlinkat_malloc (source_dfd, dent->d_name, NULL, error);
+
+          if (actual_target == NULL)
+            return FALSE;
+
+          if (g_strcmp0 (actual_target, expected_target) == 0)
+            continue;
+        }
+
+      /* We ship english and C locales always */
+      if (strcmp (language, "C") == 0 ||
+          strcmp (language, "en") == 0)
+        continue;
 
       g_ptr_array_add (names, g_strdup (dent->d_name));
     }
@@ -2087,4 +2113,47 @@ appstream_has_version (int major,
   return (as_major > major) ||
          (as_major == major && as_minor > minor) ||
          (as_major == major && as_minor == minor && as_micro >= micro);
+}
+
+gboolean
+builder_validate_checksum_string (const char *arg,
+                                  gsize       len)
+{
+  if (arg == NULL || strlen (arg) != len)
+    return FALSE;
+
+  while (*arg != '\0')
+    {
+      if (!g_ascii_isxdigit (*arg))
+        return FALSE;
+      arg++;
+    }
+
+  return TRUE;
+}
+
+gboolean
+builder_validate_source_checksums (const char *md5,
+                                   const char *sha1,
+                                   const char *sha256,
+                                   const char *sha512,
+                                   GError    **error)
+{
+  if (md5 != NULL && md5[0] != '\0' &&
+      !builder_validate_checksum_string (md5, 32))
+    return flatpak_fail (error, "Invalid md5 checksum string");
+
+  if (sha1 != NULL && sha1[0] != '\0' &&
+      !builder_validate_checksum_string (sha1, 40))
+    return flatpak_fail (error, "Invalid sha1 checksum string");
+
+  if (sha256 != NULL && sha256[0] != '\0' &&
+      !builder_validate_checksum_string (sha256, 64))
+    return flatpak_fail (error, "Invalid sha256 checksum string");
+
+  if (sha512 != NULL && sha512[0] != '\0' &&
+      !builder_validate_checksum_string (sha512, 128))
+    return flatpak_fail (error, "Invalid sha512 checksum string");
+
+  return TRUE;
 }
